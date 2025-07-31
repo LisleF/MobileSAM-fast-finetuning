@@ -8,32 +8,33 @@ from PIL import Image
 class SAMDataset(Dataset):
     """
     SAMDataset is a simple custom dataset class for images and their corresponding masks.
-    It assumes that for every '.jpg' file, there should be a '.png' mask file.
+    It assumes that for every '.png' file, there should be a '.png' mask file.
     """
-    def __init__(self, root_dir, transform=None, max_bbox_shift=10, ):
+    def __init__(self, root_dir, transform=None, max_bbox_shift=10):
         """
         Args:
-            root_dir (string): Directory containing images and masks.
+            root_dir (string): Directory containing 'train/slice' and 'train/mask' subdirectories.
             transform (tuple, optional): A tuple of two optional transforms to be applied
                 on an image and its mask respectively.
-            bbox_shift (int, optional): Add random perturbation in the range [-bbox_shift, bbox_shift]
+            max_bbox_shift (int, optional): Add random perturbation in the range [-max_bbox_shift, max_bbox_shift]
                 to the bounding box coordinates.
         """
         self.root_dir = Path(root_dir)
         self.transform = transform
         self.max_bbox_shift = max_bbox_shift
 
-        # Get all .jpg files
-        all_jpgs = list(self.root_dir.rglob('*.jpg'))
-        
-        # Filter out jpg files that have a corresponding .png mask.
+        # Set up image and mask directories
+        self.img_dir = self.root_dir / "slice"
+        self.mask_dir = self.root_dir / "mask"
+
+        # Get all image files (assuming .png) and corresponding mask files (assuming .png)
         self.img_list = []
-        for img_path in all_jpgs:
-            mask_path = img_path.with_suffix('.png')
+        for img_path in sorted(self.img_dir.glob("*.png")):
+            mask_path = self.mask_dir / (img_path.stem + ".png")
             if mask_path.exists():
                 self.img_list.append(img_path)
             else:
-                print(f"Warning: {img_path} doesn't have a corresponding mask!")
+                print(f"Warning: {img_path} doesn't have a corresponding mask at {mask_path}!")
 
     def __len__(self):
         """Return the number of samples in the dataset."""

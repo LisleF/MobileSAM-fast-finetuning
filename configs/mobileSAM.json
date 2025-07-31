@@ -1,7 +1,8 @@
 {
     "dataset":{
-        "train_dataset":"./datasets/train" ,
-        "val_dataset":"./datasets/val" ,
+        "train_dataset":"/Users/lislefaray/Documents/Phd/USDistilled/dataset/splits/train",
+        "val_dataset":"/Users/lislefaray/Documents/Phd/USDistilled/dataset/splits/val",
+        "image_size": 1024,
         "max_bbox_shift": 20,
         "num_workers":4
     },
