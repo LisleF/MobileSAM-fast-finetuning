@@ -21,6 +21,7 @@ from finetune_utils.loss import DiceLoss, batch_iou
 from finetune_utils.visualization import overlay_mask_on_image
 from finetune_utils.save_checkpoint import save_checkpoint
 from finetune_utils.schedular import LinearWarmup
+import numpy as np
 
 torch.backends.cudnn.benchmark = True
 
@@ -31,8 +32,10 @@ def main(args):
     # Create dataset and dataloader for training and validation
     train_dataset = SAMDataset(root_dir=args.dataset.train_dataset, transform=[transform_img, transform_mask], max_bbox_shift=args.dataset.max_bbox_shift)
     val_dataset = SAMDataset(root_dir=args.dataset.val_dataset, transform=[transform_img, transform_mask], max_bbox_shift=args.dataset.max_bbox_shift)
+    test_dataset = SAMDataset(root_dir=args.dataset.test_dataset, transform=[transform_img, transform_mask], max_bbox_shift=args.dataset.max_bbox_shift)
     train_loader = DataLoader(train_dataset, batch_size=args.train.batch_size, num_workers=args.dataset.num_workers, shuffle=True, pin_memory=True, persistent_workers=True)
     val_loader = DataLoader(val_dataset, batch_size=args.train.batch_size, num_workers=args.dataset.num_workers, shuffle=False, pin_memory=True, persistent_workers=True)
+    test_loader = DataLoader(test_dataset, batch_size=args.train.batch_size, num_workers=args.dataset.num_workers, shuffle=False, pin_memory=True, persistent_workers=True)
 
     # Define checkpoint and saving paths
     checkpoint_path = Path(args.model.checkpoint_path)
@@ -72,22 +75,38 @@ def main(args):
     best_val_loss = float('inf')
 
     # Main training loop
-    for epoch in range(args.train.epochs):
-        # Train for one epoch
-        train_loss = train_epoch(train_loader, model, optimizer, criterion_MSE, criterion_Dice, epoch, writer, scaler, lr_scheduler, warmup_scheduler)
-        logger.info(f"Epoch {epoch+1}/{args.train.epochs}, Train Loss: {train_loss:.4f}")
+    if args.train.status:
+        logger.info("Starting training...")
+        for epoch in range(args.train.epochs):
+            # Train for one epoch
+            train_loss = train_epoch(train_loader, model, optimizer, criterion_MSE, criterion_Dice, epoch, writer, scaler, lr_scheduler, warmup_scheduler)
+            logger.info(f"Epoch {epoch+1}/{args.train.epochs}, Train Loss: {train_loss:.4f}")
 
-        # Validate and save the model at specified intervals
-        if (epoch + 1) % args.train.val_freq == 0:
-            val_loss = val_epoch(val_loader, model, criterion_MSE, criterion_Dice, epoch, writer, scaler)
-            logger.info(f"Epoch {epoch+1}/{args.train.epochs}, Val Loss: {val_loss:.4f}")
+            # Validate and save the model at specified intervals
+            if (epoch + 1) % args.train.val_freq == 0:
+                val_loss = val_epoch(val_loader, model, criterion_MSE, criterion_Dice, epoch, writer, scaler)
+                logger.info(f"Epoch {epoch+1}/{args.train.epochs}, Val Loss: {val_loss:.4f}")
 
-            # Save the best model based on validation loss
-            # the best model could be used like the original MobileSAM checkpoint without any modification
-            is_best = val_loss < best_val_loss
-            save_checkpoint({'epoch': epoch, 'model': model.state_dict(), 'optimizer': optimizer.state_dict()}, is_best, save_path)
-            if is_best:
-                best_val_loss = val_loss
+                # Save the best model based on validation loss
+                # the best model could be used like the original MobileSAM checkpoint without any modification
+                is_best = val_loss < best_val_loss
+                save_checkpoint({'epoch': epoch, 'model': model.state_dict(), 'optimizer': optimizer.state_dict()}, is_best, save_path)
+                if is_best:
+                    best_val_loss = val_loss
+    else:
+        logger.info("Training is disabled. Skipping training loop.")
+        logger.info("Loading the best model for testing...")
+        # Load the best model for testing
+        best_model_path = save_path / 'best_model.pth'
+        if best_model_path.exists():
+            model.load_state_dict(torch.load(best_model_path, map_location='cuda')['model'])
+            logger.info(f"Loaded best model from {best_model_path}")
+        else:
+            logger.warning(f"No best model found at {best_model_path}. Testing with the current model state.")
+        model.eval()
+        logger.info("Starting testing...")
+        test_iou, test_dice = test_epoch(test_loader, model, threshold=args.test.threshold)
+        logger.info(f"Test IoU: {test_iou:.4f}, Test Dice: {test_dice:.4f}")
 
 def train_epoch(dataloader, model, optimizer, criterion_MSE, criterion_Dice, epoch, writer, scaler, lr_scheduler, warmup_scheduler):
     """Main training function."""
@@ -176,6 +195,27 @@ def val_epoch(dataloader, model, criterion_MSE, criterion_Dice, epoch, writer, s
     writer.add_scalar('Val loss', average_loss, epoch)
 
     return average_loss
+
+def test_epoch(dataloader, model, threshold=0.5):
+    model.eval()
+    ious, dices = [], []
+
+    with torch.no_grad():
+        for image, mask, bbox in tqdm(dataloader, desc="Testing"):
+            image, mask, bbox = image.cuda(), mask.cuda(), bbox.cuda()
+            pred_mask, _ = model(image, bbox)
+            pred_mask = torch.sigmoid(pred_mask) > threshold
+
+            intersection = (pred_mask & mask.bool()).float().sum((1, 2, 3))
+            union = (pred_mask | mask.bool()).float().sum((1, 2, 3))
+            dice = (2 * intersection) / (pred_mask.float().sum((1, 2, 3)) + mask.float().sum((1, 2, 3)) + 1e-6)
+            iou = intersection / (union + 1e-6)
+
+            ious.extend(iou.cpu().numpy())
+            dices.extend(dice.cpu().numpy())
+
+    print(f"Test IoU: {np.mean(ious):.4f}, Dice: {np.mean(dices):.4f}")
+    return np.mean(ious), np.mean(dices)
 
 
 if __name__ == '__main__':

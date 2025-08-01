@@ -2,6 +2,7 @@
     "dataset":{
         "train_dataset":"/Users/lislefaray/Documents/Phd/USDistilled/dataset/splits/train",
         "val_dataset":"/Users/lislefaray/Documents/Phd/USDistilled/dataset/splits/val",
+        "test_dataset":"/Users/lislefaray/Documents/Phd/USDistilled/dataset/splits/test",
         "image_size": 1024,
         "max_bbox_shift": 20,
         "num_workers":4
@@ -20,7 +21,8 @@
         "gradient_accumulation": 1,
         "bf16": false,
         "warmup_step": 250,
-        "resume": false
+        "resume": false,
+        "status": true
     },
     "visual":{
         "status": true,
@@ -30,6 +32,6 @@
     "freeze":{
         "freeze_image_encoder": true,
         "freeze_prompt_encoder": true,
-        "freeze_mask_decoder": false
+        "freeze_mask_decoder": true
     }
 }
