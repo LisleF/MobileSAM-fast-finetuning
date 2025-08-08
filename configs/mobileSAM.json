@@ -1,8 +1,8 @@
 {
     "dataset":{
-        "train_dataset":"/Users/lislefaray/Documents/Phd/USDistilled/dataset/splits/train",
-        "val_dataset":"/Users/lislefaray/Documents/Phd/USDistilled/dataset/splits/val",
-        "test_dataset":"/Users/lislefaray/Documents/Phd/USDistilled/dataset/splits/test",
+        "train_dataset":"C://Users//User1//Desktop//USDistilled//dataset//train",
+        "val_dataset":"C://Users//User1//Desktop//USDistilled//dataset//val",
+        "test_dataset":"C://Users//User1//Desktop//USDistilled//dataset//test",
         "image_size": 1024,
         "max_bbox_shift": 20,
         "num_workers":4
@@ -14,7 +14,7 @@
         "save_path":"./logs"
     },
     "train": {
-        "epochs": 10000,
+        "epochs": 10,
         "learning_rate": 1e-5,
         "batch_size": 4,
         "val_freq": 5,
@@ -32,6 +32,6 @@
     "freeze":{
         "freeze_image_encoder": true,
         "freeze_prompt_encoder": true,
-        "freeze_mask_decoder": true
+        "freeze_mask_decoder": false
     }
 }

@@ -32,11 +32,14 @@ def main(args):
     # Create dataset and dataloader for training and validation
     train_dataset = SAMDataset(root_dir=args.dataset.train_dataset, transform=[transform_img, transform_mask], max_bbox_shift=args.dataset.max_bbox_shift)
     val_dataset = SAMDataset(root_dir=args.dataset.val_dataset, transform=[transform_img, transform_mask], max_bbox_shift=args.dataset.max_bbox_shift)
-    test_dataset = SAMDataset(root_dir=args.dataset.test_dataset, transform=[transform_img, transform_mask], max_bbox_shift=args.dataset.max_bbox_shift)
+    if len(train_dataset) == 0 or len(val_dataset) == 0:
+        raise ValueError("Training or validation dataset is empty. Please check the dataset paths and contents.")
     train_loader = DataLoader(train_dataset, batch_size=args.train.batch_size, num_workers=args.dataset.num_workers, shuffle=True, pin_memory=True, persistent_workers=True)
     val_loader = DataLoader(val_dataset, batch_size=args.train.batch_size, num_workers=args.dataset.num_workers, shuffle=False, pin_memory=True, persistent_workers=True)
-    test_loader = DataLoader(test_dataset, batch_size=args.train.batch_size, num_workers=args.dataset.num_workers, shuffle=False, pin_memory=True, persistent_workers=True)
+    
 
+    test_dataset = SAMDataset(root_dir=args.dataset.test_dataset, transform=[transform_img, transform_mask], max_bbox_shift=args.dataset.max_bbox_shift)
+    test_loader = DataLoader(test_dataset, batch_size=args.train.batch_size, num_workers=args.dataset.num_workers, shuffle=False, pin_memory=True, persistent_workers=True)
     # Define checkpoint and saving paths
     checkpoint_path = Path(args.model.checkpoint_path)
     save_path = Path(args.model.save_path)
@@ -64,6 +67,7 @@ def main(args):
     optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=args.train.learning_rate)
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.train.epochs * len(train_dataset))
     warmup_scheduler = LinearWarmup(optimizer, warmup_period=args.train.warmup_step)
+    
 
     criterion_MSE = nn.MSELoss()
     criterion_Dice = DiceLoss(sigmoid=True, squared_pred=True, reduction='mean')
@@ -93,19 +97,27 @@ def main(args):
                 save_checkpoint({'epoch': epoch, 'model': model.state_dict(), 'optimizer': optimizer.state_dict()}, is_best, save_path)
                 if is_best:
                     best_val_loss = val_loss
+            
+        
+        ## test the model after training
+        logger.info("Training completed. Loading the best model for testing...")
+        
+        test_iou, test_dice = test_epoch(test_loader, model, threshold=args.visual.IOU_threshold)
+        logger.info(f"Test IoU: {test_iou:.4f}, Test Dice: {test_dice:.4f}")
     else:
+
         logger.info("Training is disabled. Skipping training loop.")
         logger.info("Loading the best model for testing...")
-        # Load the best model for testing
-        best_model_path = save_path / 'best_model.pth'
-        if best_model_path.exists():
-            model.load_state_dict(torch.load(best_model_path, map_location='cuda')['model'])
-            logger.info(f"Loaded best model from {best_model_path}")
-        else:
-            logger.warning(f"No best model found at {best_model_path}. Testing with the current model state.")
+        # # Load the best model for testing
+        # best_model_path = save_path / 'best.pth'
+        # if best_model_path.exists():
+        #     model = get_sam_vit_t(checkpoint=best_model_path, resume=args.train.resume).cuda()
+        #     logger.info(f"Loaded best model from {best_model_path}")
+        # else:
+        #     logger.warning(f"No best model found at {best_model_path}. Testing with the current model state.")
         model.eval()
         logger.info("Starting testing...")
-        test_iou, test_dice = test_epoch(test_loader, model, threshold=args.test.threshold)
+        test_iou, test_dice = test_epoch(test_loader, model, threshold=args.visual.IOU_threshold)
         logger.info(f"Test IoU: {test_iou:.4f}, Test Dice: {test_dice:.4f}")
 
 def train_epoch(dataloader, model, optimizer, criterion_MSE, criterion_Dice, epoch, writer, scaler, lr_scheduler, warmup_scheduler):
