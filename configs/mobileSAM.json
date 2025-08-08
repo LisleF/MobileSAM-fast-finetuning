@@ -22,7 +22,7 @@
         "bf16": false,
         "warmup_step": 250,
         "resume": false,
-        "status": true
+        "status": false
     },
     "visual":{
         "status": true,
